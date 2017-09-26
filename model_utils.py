@@ -72,6 +72,16 @@ def weights_init(m):
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)    
         
+def load_embeddings(embeddings_path, enc=None, dp=None, opt=None):
+
+    if os.path.exists(embeddings_path):
+        embeddings = torch.load(embeddings_path)
+    else:
+        embeddings = model_utils.get_latent_embeddings(enc, dp, opt)
+        torch.save(embeddings, embeddings_path)
+    
+    return embeddings
+        
 def get_latent_embeddings(enc, dp, opt):
     enc.eval()
     gpu_id = opt.gpu_ids[0]
@@ -98,19 +108,25 @@ def get_latent_embeddings(enc, dp, opt):
         
     return embedding
         
-def load_model(model_provider, opt):
-    model = importlib.import_module("models." + opt.model_name)
- 
-    enc = model_provider.Enc(opt.nlatentdim, opt.nClasses, opt.nRef, opt.imsize, opt.nch, opt.gpu_ids, opt)
-    dec = model_provider.Dec(opt.nlatentdim, opt.nClasses, opt.nRef, opt.imsize, opt.nch, opt.gpu_ids, opt)
-    encD = model_provider.EncD(opt.nlatentdim, opt.gpu_ids, opt)
-    decD = model_provider.DecD(opt.nClasses+1, opt.imsize, opt.nch, opt.gpu_ids, opt)
+def load_data_provider(data_path, im_dir, dp_module):
+    DP = importlib.import_module("data_providers." + dp_module)
 
-    if opt.dtype == 'half':
-        enc = enc.half()
-        dec = dec.half()
-        encD = encD.half()
-        decD = decD.half()
+    if os.path.exists(data_path):
+        dp = torch.load(data_path)
+    else:
+        dp = DP.DataProvider(im_dir)
+        torch.save(dp, data_path)
+        
+    return dp
+
+def load_model(model_name, opt):
+    
+    model_provider = importlib.import_module("models." + model_name)
+ 
+    enc = model_provider.Enc(opt.nlatentdim, opt.nClasses, opt.nRef, opt.nch, opt.gpu_ids, opt)
+    dec = model_provider.Dec(opt.nlatentdim, opt.nClasses, opt.nRef, opt.nch, opt.gpu_ids, opt)
+    encD = model_provider.EncD(opt.nlatentdim, opt.gpu_ids, opt)
+    decD = model_provider.DecD(opt.nClasses+1, opt.nch, opt.gpu_ids, opt)
     
     enc.apply(weights_init)
     dec.apply(weights_init)
@@ -158,27 +174,11 @@ def load_model(model_provider, opt):
     if os.path.exists('./{0}/enc.pth'.format(opt.save_dir)):
         print('Loading from ' + opt.save_dir)
         
-        enc.load_state_dict(torch.load('./{0}/enc.pth'.format(opt.save_dir)))
-        dec.load_state_dict(torch.load('./{0}/dec.pth'.format(opt.save_dir)))
-        encD.load_state_dict(torch.load('./{0}/encD.pth'.format(opt.save_dir)))
-        decD.load_state_dict(torch.load('./{0}/decD.pth'.format(opt.save_dir)))
-
-        optEnc.load_state_dict(torch.load('./{0}/optEnc.pth'.format(opt.save_dir)))
-        optDec.load_state_dict(torch.load('./{0}/optDec.pth'.format(opt.save_dir)))
-        optEncD.load_state_dict(torch.load('./{0}/optEncD.pth'.format(opt.save_dir)))
-        optDecD.load_state_dict(torch.load('./{0}/optDecD.pth'.format(opt.save_dir)))
-
-        optEnc.state = set_gpu_recursive(optEnc.state, gpu_id)
-        optDec.state = set_gpu_recursive(optDec.state, gpu_id)
-        optEncD.state = set_gpu_recursive(optEncD.state, gpu_id)
-        optDecD.state = set_gpu_recursive(optDecD.state, gpu_id)
-
-        enc.cuda(gpu_id)
-        dec.cuda(gpu_id)
-        encD.cuda(gpu_id)
-        decD.cuda(gpu_id)                           
-
-        # opt = pickle.load(open( '{0}/opt.pkl'.format(opt.save_dir), "rb" ))
+        load_state(enc, optEnc, './{0}/enc.pth'.format(opt.save_dir), './{0}/optEnc.pth'.format(opt.save_dir), gpu_id)
+        load_state(dec, optDec, './{0}/dec.pth'.format(opt.save_dir), './{0}/optDec.pth'.format(opt.save_dir), gpu_id)
+        load_state(encD, optEncD, './{0}/encD.pth'.format(opt.save_dir), './{0}/optEncD.pth'.format(opt.save_dir), gpu_id)
+        load_state(decD, optDecD, './{0}/decD.pth'.format(opt.save_dir), './{0}/optDecD.pth'.format(opt.save_dir), gpu_id)
+    
         logger = pickle.load(open( '{0}/logger.pkl'.format(opt.save_dir), "rb" ))
 
         this_epoch = max(logger.log['epoch']) + 1
@@ -214,6 +214,16 @@ def load_model(model_provider, opt):
     
     return models, optimizers, criterions, logger, opt
 
+def load_state(model, optimizer, model_save_path, opt_save_path, gpu_id):
+    model.load_state_dict(torch.load(model_save_path))
+    model.cuda(gpu_id)
+    
+    optimizer.load_state_dict(torch.load(opt_save_path))
+    optimizer.state = set_gpu_recursive(optimizer.state, gpu_id)
+    
+    return model, optimizer
+    
+
 def maybe_save(epoch, epoch_next, models, optimizers, logger, zAll, dp, opt):
     saved = False
     if epoch != epoch_next and ((epoch_next % opt.saveProgressIter) == 0 or (epoch_next % opt.saveStateIter) == 0):
@@ -243,21 +253,14 @@ def save_progress(enc, dec, dataProvider, logger, embedding, opt):
     dec.train(False)
 
     x = Variable(dataProvider.get_images(np.arange(0,10),'train').cuda(gpu_id), volatile=True)
-    
-    # try:
     xHat = dec(enc(x))
-    # except:
-    #     xHat = dec(enc(x)[0])
         
     imgX = tensor2img(x.data.cpu())
     imgXHat = tensor2img(xHat.data.cpu())
     imgTrainOut = np.concatenate((imgX, imgXHat), 0)
 
     x = Variable(dataProvider.get_images(np.arange(0,10),'test').cuda(gpu_id), volatile=True)
-    # try:
     xHat = dec(enc(x))
-    # except:
-    #     xHat = dec(enc(x)[0])
     
     imgX = tensor2img(x.data.cpu())
     imgXHat = tensor2img(xHat.data.cpu())
@@ -270,12 +273,8 @@ def save_progress(enc, dec, dataProvider, logger, embedding, opt):
     enc.train(True)
     dec.train(True)
 
-    # pdb.set_trace()
-    # zAll = torch.cat(zAll,0).cpu().numpy()
-
     pickle.dump(embedding, open('./{0}/embedding_tmp.pkl'.format(opt.save_dir), 'wb'))
     pickle.dump(logger, open('./{0}/logger_tmp.pkl'.format(opt.save_dir), 'wb'))
-    
     
 
     ### History

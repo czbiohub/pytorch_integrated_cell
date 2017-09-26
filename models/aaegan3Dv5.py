@@ -7,7 +7,7 @@ ksize = 4
 dstep = 2
 
 class Enc(nn.Module):
-    def __init__(self, nLatentDim, nClasses, nRef, insize, nch, gpu_ids, opt=None):
+    def __init__(self, nLatentDim, nClasses, nRef, nch, gpu_ids, opt=None):
         super(Enc, self).__init__()
         
         self.gpu_ids = gpu_ids
@@ -88,7 +88,7 @@ class Enc(nn.Module):
         return xOut
     
 class Dec(nn.Module):
-    def __init__(self, nLatentDim, nClasses, nRef, insize, nch, gpu_ids, opt=None):
+    def __init__(self, nLatentDim, nClasses, nRef, nch, gpu_ids, opt=None):
         super(Dec, self).__init__()
         
         self.gpu_ids = gpu_ids
@@ -178,7 +178,7 @@ class EncD(nn.Module):
         return x        
 
 class DecD(nn.Module):
-    def __init__(self, nout, insize, nch, gpu_ids, opt=None):
+    def __init__(self, nout, nch, gpu_ids, opt=None):
         super(DecD, self).__init__()
         
         def opt_default(): 1
