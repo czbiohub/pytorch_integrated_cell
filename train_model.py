@@ -149,12 +149,8 @@ for this_iter in range(start_iter, math.ceil(iters_per_epoch)*opt.nepochs):
 #######
 
 embeddings_path = opt.save_dir + os.sep + 'embeddings.pkl'
-if os.path.exists(embeddings_path):
-    embeddings = torch.load(embeddings_path)
-else:
-    embeddings = get_latent_embeddings(models['enc'], dp, opt)
-    torch.save(embeddings, embeddings_path)
-
+embeddings = model_utils.load_embeddings(embeddings_path, models['enc'], dp, opt)    
+    
 models = None
 optimizers = None
     
@@ -215,6 +211,9 @@ for this_iter in range(start_iter, math.ceil(iters_per_epoch)*opt.nepochs_pt2):
         zAll = list()
             
 print('Finished Training')
+
+embeddings_path = opt.save_dir + os.sep + 'embeddings.pkl'
+embeddings = model_utils.load_embeddings(embeddings_path, models['enc'], dp, opt) 
 
 #######    
 ### DONE TRAINING STRUCTURE MODEL
