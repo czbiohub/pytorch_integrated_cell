@@ -2,7 +2,6 @@
 ### This function prints off the most likely predicted 
 ### channels for each of the cells in our dataset
 #######
-
 import argparse
 
 import importlib
@@ -31,18 +30,24 @@ cudnn.benchmark = True
 
 import pdb
 
+import corr_stats
+
 from tqdm import tqdm
 
 
-parent_dir = './test_aaegan/aaegan3Dv5_128D'
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('--parent_dir', help='save dir')
+parser.add_argument('--gpu_ids', nargs='+', type=int, default=0, help='gpu id')
+args = parser.parse_args()
 
-model_dir = parent_dir + os.sep + 'struct_model' 
+model_dir = args.parent_dir + os.sep + 'struct_model' 
 
 # logger_file = '{0}/logger_tmp.pkl'.format(model_dir)
 opt = pickle.load(open( '{0}/opt.pkl'.format(model_dir), "rb" ))
 print(opt)
 
-opt.gpu_ids = [0, 1]
+opt.gpu_ids = args.gpu_ids
 
 torch.manual_seed(opt.myseed)
 torch.cuda.manual_seed(opt.myseed)
